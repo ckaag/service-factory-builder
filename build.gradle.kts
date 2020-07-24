@@ -8,6 +8,7 @@ version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
+    mavenLocal()
 }
 
 dependencies {
@@ -17,6 +18,8 @@ dependencies {
     implementation("com.sun.xml.bind", "jaxb-impl", "2.3.0")
     implementation("com.sun.xml.bind", "jaxb-core", "2.3.0")
     implementation("javax.activation", "javax.activation-api", "1.2.0")
+    implementation("com.unymira", "bistro-persistence-api", "1.0.0")
+    implementation("com.liferay.portal", "com.liferay.portal.kernel", "4.33.0")
 
 }
 

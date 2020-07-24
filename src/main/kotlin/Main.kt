@@ -8,7 +8,7 @@ fun main() {
     val model = parseServiceXmlToModel(xml)
     val output: Map<String, String> = model.formatAsJavaFilesForOutput()
     output.entries.forEach { println(it.key + ":\n====\n" + it.value + "\n========\n\n") }
-    
+
     output.forEach { filepath, filecontent -> writeFile(filepath, filecontent) }
 }
 
@@ -24,7 +24,7 @@ fun parseServiceXmlToModel(xml: String): ServiceModel {
     val jaxbContext = JAXBContext.newInstance(ServiceBuilder::class.java)
 
     System.setProperty("javax.xml.accessExternalDTD", "all")
-    
+
     val jaxbUnmarshaller = jaxbContext.createUnmarshaller()
 
     val serviceBuilderXml = jaxbUnmarshaller!!.unmarshal(StringReader(xml)) as ServiceBuilder;
@@ -35,11 +35,15 @@ fun parseServiceXmlToModel(xml: String): ServiceModel {
 fun transformIntoModel(builderXml: ServiceBuilder): ServiceModel {
     return ServiceModel(
         builderXml.entity.map { rawEntity ->
-            ServiceEntity(builderXml.packagePath, builderXml.namespace, rawEntity.name,
+            ServiceEntity(rawEntity.localService == "true",
+                rawEntity.remoteService == "true",
+                builderXml.packagePath,
+                builderXml.namespace,
+                rawEntity.name,
                 rawEntity.column.map { rawColumn ->
                     EntityColumn(
-                        rawColumn.name,
-                        if (rawColumn.type == "Collection") "List<${rawColumn.entity}>" else rawColumn.type,
+                        rawColumn.name.capitalize(),
+                        if (rawColumn.type == "Collection") null else rawColumn.type,
                         true,
                         "true" == rawColumn.primary
                     )
@@ -55,14 +59,21 @@ data class ServiceModel(val entities: List<ServiceEntity>) {
 }
 
 private fun formatOutputClassFilepath(e: ServiceEntity): String {
-    return "./src/main/java/${e.pckge.packageToPath()}/factory/${e.name}Builder.java"
+    return "./src/main/java/${e.pckge.packageToPath()}/factory/${e.name}Factory.java"
 }
 
 private fun String.packageToPath(): String {
     return this.replace('.', '/')
 }
 
-data class ServiceEntity(val pckge: String, val namespace: String, val name: String, val columns: List<EntityColumn>) {
+data class ServiceEntity(
+    val hasLocalService: Boolean,
+    val hasRemoteService: Boolean,
+    val pckge: String,
+    val namespace: String,
+    val name: String,
+    val columns: List<EntityColumn>
+) {
 
     fun getAllColumns(): List<EntityColumn> = this.columns.toList() + this.hardRefColumns
     fun generateIdParamsWithType(): String {
@@ -81,11 +92,11 @@ data class ServiceEntity(val pckge: String, val namespace: String, val name: Str
 
 data class EntityColumn(
     val name: String,
-    val type: String,
+    val type: String?,
     val required: Boolean = true,
     val primaryKey: Boolean = false
 ) {
-    fun isObjectType(): Boolean = getDefaultValueForType(type) == "null"
+    fun isObjectType(): Boolean? = type?.let { getDefaultValueForType(it) == "null" }
 }
 
 
@@ -93,34 +104,68 @@ fun formatOutputClassFile(e: ServiceEntity): String {
     val builder = e.name + "Factory"
     val prefix = """package ${e.pckge}.factory;
         
-        import ${e.pckge}.model.*;
-        import ${e.pckge}.service.*;
-        import java.util.*;
+import com.liferay.counter.kernel.service.CounterLocalServiceUtil;
+import ${e.pckge}.model.*;
+import ${e.pckge}.service.*;
+import ${e.pckge}.service.persistence.*;
+import java.util.*;
         
-        public class ${builder} {
+public class ${builder} {
             
-            private ${builder}() {}
-            
-            public static ${builder} builder() {
-                return new ${builder}();
-            }
+    private ${builder}() {}
+    
+    private static void require(Object object) {
+        Objects.requireNonNull(object);
+    }
 
-    """.trimIndent()
+    public static ${builder} builder() {
+        return new ${builder}();
+    }
+
+"""
 
     val functionDefinitions = StringBuilder()
     val finalBuildMethod = StringBuilder()
 
-    finalBuildMethod.appendln(
-        """//TODO: add a second builder that generates a new id (this one can just generate a new id via counterlocalservice)
+    if (e.hasLocalService) {
+        finalBuildMethod.appendln(
+            """
+            public ${e.name} build(${e.name}LocalService service) {
+                return this.build(CounterLocalServiceUtil.increment(${e.name}.class.getName()), service);
+            }
+            
             public ${e.name} build(${e.generateIdParamsWithType()}, ${e.name}LocalService service) {
             ${e.name} entity = service.create${e.name}(${e.generateIdParamsWithoutType()});
+            return this.build(entity);
+            }
             """
+        )
+    } else {
+        finalBuildMethod.appendln(
+            """//TODO: add a second builder that generates a new id (this one can just generate a new id via counterlocalservice)
+            public ${e.name} build(${e.name}Persistence persistence) {
+                return this.build(CounterLocalServiceUtil.increment(${e.name}.class.getName()), persistence);
+            }
+            
+            public ${e.name} build(${e.generateIdParamsWithType()}, ${e.name}Persistence persistence) {
+            ${e.name} entity = persistence.create(${e.generateIdParamsWithoutType()});
+            return this.build(entity);
+            }
+            """
+        )
+    }
+
+    finalBuildMethod.appendln(
+        """
+        public ${e.name} build(${e.name} entity) {
+    """.trimIndent()
     )
 
     e.getAllColumns().forEach { col ->
         if (!col.primaryKey) {
-            functionDefinitions.appendln(
-                """
+            if (col.type != null) {
+                functionDefinitions.appendln(
+                    """
                 private ${col.type} _${col.name} = ${getDefaultValueForType(col.type)};
                 
                 public ${col.type} get${col.name}() {
@@ -132,11 +177,14 @@ fun formatOutputClassFile(e: ServiceEntity): String {
                     return this;
                 }
             """.trimIndent()
-            )
-            if (col.required && col.isObjectType()) {
-                finalBuildMethod.appendln("""require(this._${col.name});""");
+                )
+                if (col.required && col.isObjectType() == true) {
+                    finalBuildMethod.appendln("""require(this._${col.name});""");
+                }
+                if (col.isObjectType() != null) {
+                    finalBuildMethod.appendln("""entity.set${col.name}(this._${col.name});""")
+                }
             }
-            finalBuildMethod.appendln("""entity.set${col.name}(this._${col.name});""")
         }
     }
 
@@ -147,7 +195,7 @@ fun formatOutputClassFile(e: ServiceEntity): String {
     """.trimIndent()
     )
 
-    return "$prefix$functionDefinitions\n}\n"
+    return "$prefix$functionDefinitions\n$finalBuildMethod\n\n}\n"
 }
 
 fun getDefaultValueForType(type: String): String {
