@@ -9,7 +9,14 @@ fun main() {
     val output: Map<String, String> = model.formatAsJavaFilesForOutput()
     output.entries.forEach { println(it.key + ":\n====\n" + it.value + "\n========\n\n") }
     
-    output.forEach { filepath, filecontent -> File(filepath).writeText(filecontent) }
+    output.forEach { filepath, filecontent -> writeFile(filepath, filecontent) }
+}
+
+fun writeFile(filepath: String, filecontent: String) {
+    val f = File(filepath).canonicalFile
+    println(f.absolutePath)
+    f.parentFile.mkdirs()
+    File(filepath).writeText(filecontent)
 }
 
 
