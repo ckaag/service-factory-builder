@@ -6,10 +6,15 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
+import com.github.ajalt.clikt.parameters.types.path
+import com.github.ckaag.liferay.service.factory.builder.mock.Dependencies
+import com.github.ckaag.liferay.service.factory.builder.mock.LogOutput
+import com.github.ckaag.liferay.service.factory.builder.mock.OutputFileWriter
 import com.github.ckaag.service.factory.builder.xml.ServiceBuilder
-import exampleServiceXml
 import java.io.File
 import java.io.StringReader
+import java.nio.file.Path
+import java.nio.file.Paths
 import javax.xml.bind.JAXBContext
 
 
@@ -23,55 +28,62 @@ class ServiceFactoryBuilder : CliktCommand() {
     val transientMode: Boolean by option("-z", "--transient").flag()
     val forceMode: Boolean by option("-f", "--force").flag()
     val inputXmlFiles: List<File> by option("-i", "--input-files").file().multiple(required = true)
-    val outputDirectory: File by option("-o", "--output-directory").file().default(File(ROOT_JAVA_SRC_DIR))
+    val outputDirectory: Path by option("-o", "--output-directory").path().default(Path.of(ROOT_JAVA_SRC_DIR))
+
+    val dependencies =
+        Dependencies(LogOutput.PrintlnOutputFileWriter(), OutputFileWriter.DiskOutputFileWriter(outputDirectory))
 
     override fun run() {
         if (forceMode || outputDirectory.hasMavenOrGradleProjectRoot()) {
             val xmlFiles: List<String> = inputXmlFiles.map { it.readText() }
             xmlFiles.forEach { xml ->
-                generateOutput(outputDirectory, xml, typedMode).logOutput().writeOutputToDisk(transientMode)
+                generateOutput(xml, typedMode).logOutput(dependencies)
+                    .writeOutputToDisk(dependencies, transientMode)
             }
         } else {
-            throw UnsupportedOperationException("outputdirectory '${outputDirectory.canonicalPath}' does not seem to be part of a maven or gradle project structure, this might be wrongly used. Use '-f' to skip this check and generate the sources regardless of this problem.")
+            throw UnsupportedOperationException("outputdirectory '${outputDirectory.toFile().canonicalPath}' does not seem to be part of a maven or gradle project structure, this might be wrongly used. Use '-f' to skip this check and generate the sources regardless of this problem.")
         }
     }
 }
 
-private fun File.hasMavenOrGradleProjectRoot(): Boolean {
+private fun Path.hasMavenOrGradleProjectRoot(): Boolean {
     val mvnRoot = this.resolve("./../../../")
-    return mvnRoot.resolve("build.gradle.kts").exists() || mvnRoot.resolve("build.gradle").exists() || mvnRoot.resolve("pom.xml").exists()
+    return mvnRoot.resolve("build.gradle.kts").exists() || mvnRoot.resolve("build.gradle")
+        .exists() || mvnRoot.resolve("pom.xml").exists()
 }
 
-typealias FactoryOutput = Map<String, String>
+private fun Path.exists(): Boolean = this.toFile().let { it.exists() && it.canRead() }
 
-fun generateOutput(targetOutputDirectory: File, inputXml: String, typedMode: Boolean): FactoryOutput {
+typealias FactoryOutput = Map<Path, String>
+
+fun generateOutput(inputXml: String, typedMode: Boolean): FactoryOutput {
     val model = parseServiceXmlToModel(inputXml)
-    val output: Map<String, String> = model.formatAsJavaFilesForOutput(targetOutputDirectory, typedMode)
+    val output: FactoryOutput = model.formatAsJavaFilesForOutput(typedMode)
     return output
 }
 
-fun FactoryOutput.logOutput(): FactoryOutput {
-    this.entries.forEach { println(it.key + ":\n====\n" + it.value + "\n========\n\n") }
+fun FactoryOutput.logOutput(dependencies: Dependencies): FactoryOutput {
+    this.entries.forEach { dependencies.log.output(it.key.toString() + ":\n====\n" + it.value + "\n========\n\n") }
     return this
 }
 
-fun FactoryOutput.writeOutputToDisk(transientMode: Boolean = false): FactoryOutput {
+fun FactoryOutput.writeOutputToDisk(dependencies: Dependencies, transientMode: Boolean = false): FactoryOutput {
     if (!transientMode) {
-        this.forEach { filepath, filecontent -> writeFile(filepath, filecontent) }
+        this.forEach { (filepath, filecontent) -> writeFile(dependencies, filepath, filecontent) }
     }
     return this
 }
 
-fun withExampleServiceXml() {
-    val xml = exampleServiceXml
-    generateOutput(File(ROOT_JAVA_SRC_DIR), xml, false).logOutput().writeOutputToDisk()
-}
-
-fun writeFile(filepath: String, filecontent: String) {
-    val f = File(filepath).canonicalFile
-    println(f.absolutePath)
+fun writeFile(
+    dependencies: Dependencies,
+    filepath: Path,
+    filecontent: String
+) {
+    val f = filepath.toFile().canonicalFile
+    dependencies.log.info(f.absolutePath)
     f.parentFile.mkdirs()
-    File(filepath).writeText(filecontent)
+    f.writeText(filecontent)
+    dependencies.writer.write(filepath, filecontent)
 }
 
 
@@ -108,9 +120,9 @@ fun transformIntoModel(builderXml: ServiceBuilder): ServiceModel {
 }
 
 data class ServiceModel(val entities: List<ServiceEntity>) {
-    fun formatAsJavaFilesForOutput(targetSrcRootDirectory: File, typedMode: Boolean): Map<String, String> {
+    fun formatAsJavaFilesForOutput(typedMode: Boolean): FactoryOutput {
         return entities.map {
-            formatOutputClassFilepath(it, targetSrcRootDirectory) to formatOutputClassFile(
+            formatOutputClassFilepath(it) to formatOutputClassFile(
                 it,
                 typedMode
             )
@@ -118,8 +130,9 @@ data class ServiceModel(val entities: List<ServiceEntity>) {
     }
 }
 
-private fun formatOutputClassFilepath(e: ServiceEntity, targetSrcRootDirectory: File): String {
-    return "./src/main/java/${e.pckge.packageToPath()}/factory/${e.name}Factory.java"
+private fun formatOutputClassFilepath(e: ServiceEntity): Path {
+    val subpath = "${e.pckge.packageToPath()}/factory/${e.name}Factory.java"
+    return Paths.get(subpath)
 }
 
 private fun String.packageToPath(): String {
@@ -161,6 +174,9 @@ data class EntityColumn(
 
 
 fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): String {
+    if (typedMode) {
+        TODO("typedMode is not yet implemented")
+    }
     val builder = e.name + "Factory"
     val prefix = """package ${e.pckge}.factory;
         

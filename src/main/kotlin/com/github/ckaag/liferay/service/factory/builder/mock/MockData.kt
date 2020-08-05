@@ -1,9 +1,24 @@
+package com.github.ckaag.liferay.service.factory.builder.mock
+
+import com.github.ckaag.liferay.service.factory.builder.generateOutput
+import com.github.ckaag.liferay.service.factory.builder.logOutput
+import com.github.ckaag.liferay.service.factory.builder.writeOutputToDisk
+
 /**
  * Created by usickaag on Freitag, 24.07.2020 at 13:22.
  */
 
 
-internal val exampleServiceXml = """<?xml version="1.0"?>
+
+fun withExampleServiceXml() {
+    val xml = exampleServiceXml
+    val dep = Dependencies()
+    generateOutput(xml, false).logOutput(dep).writeOutputToDisk(dep)
+}
+
+
+
+val exampleServiceXml = """<?xml version="1.0"?>
 <!DOCTYPE service-builder PUBLIC "-//Liferay//DTD Service Builder 7.2.0//EN" "http://www.liferay.com/dtd/liferay-service-builder_7_2_0.dtd">
 
 <service-builder dependency-injector="ds" package-path="com.usu.moe.inside.bistro">
@@ -98,3 +113,51 @@ internal val exampleServiceXml = """<?xml version="1.0"?>
 	
 </service-builder>
 """
+
+val simpleTypedXml = """<?xml version="1.0"?>
+<!DOCTYPE service-builder PUBLIC "-//Liferay//DTD Service Builder 7.2.0//EN" "http://www.liferay.com/dtd/liferay-service-builder_7_2_0.dtd">
+
+<service-builder dependency-injector="ds" package-path="com.usu.moe.inside.bistro">
+	<namespace>USUBISTRO</namespace>
+
+	<entity local-service="false" name="BistroDish" remote-service="false" uuid="false">
+		<column name="dishId" primary="true" type="long" />
+		<column name="label" type="String" />
+		<column name="imageUrl" type="String" />
+		<column name="dateOfServing" type="Date" />
+
+		<column name="createdDate" type="Date" />
+		<column name="modifiedDate" type="Date" />
+		<column name="userId" type="long" />
+		<column name="groupId" type="long" />
+		<column name="status" type="int" />
+	</entity>
+</service-builder>
+"""
+
+val simpleTypedXmlHints = """<?xml version="1.0"?>
+
+<model-hints>
+	<model name="com.usu.moe.inside.bistro.model.BistroDish">
+		<field name="dishId" type="long" />
+		<field name="label" type="String"  >
+			<validator name="required"/>
+		</field>
+		<field name="imageUrl" type="String" />
+		<field name="dateOfServing" type="Date"  >
+			<validator name="required"/>
+		</field>
+		<field name="createdDate" type="Date"  >
+			<validator name="required"/>
+		</field>
+		<field name="modifiedDate" type="Date" />
+		<field name="userId" type="long"  >
+			<validator name="required"/>
+		</field>
+		<field name="groupId" type="long" />
+		<field name="status" type="int" />
+	</model>
+</model-hints>
+    
+"""
+
