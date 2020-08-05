@@ -1,0 +1,36 @@
+<!--
+<!DOCTYPE model-hints PUBLIC
+	"-//Liferay//DTD Portlet Model Hints 7.0.0//EN"
+	"http://www.liferay.com/dtd/liferay-portlet-model-hints_7_0_0.dtd">
+-->
+        <!ELEMENT model-hints (hint-collection?, model?)*>
+
+        <!ELEMENT hint-collection (hint?)*>
+        <!ATTLIST hint-collection
+                name CDATA #REQUIRED>
+
+        <!ELEMENT hint (#PCDATA)>
+        <!ATTLIST hint
+                name (auto-escape|auto-size|day-nullable|default-month-delta|default-value|display-height|display-width|editor|max-length|month-nullable|secret|show-time|upper-case|year-nullable|year-range-delta|year-range-future|year-range-past|custom) #REQUIRED>
+
+        <!ELEMENT model (default-hints?, field?)*>
+        <!ATTLIST model
+                name CDATA #REQUIRED>
+
+        <!ELEMENT default-hints (hint?)*>
+
+        <!ELEMENT field (hint-collection?, hint?, sanitize?, validator?)*>
+        <!ATTLIST field
+                name CDATA #REQUIRED
+                type CDATA #REQUIRED
+                localized CDATA #IMPLIED>
+
+        <!ELEMENT sanitize EMPTY>
+        <!ATTLIST sanitize
+                content-type CDATA #REQUIRED
+                modes CDATA #REQUIRED>
+
+        <!ELEMENT validator (#PCDATA)>
+        <!ATTLIST validator
+                name (acceptFiles|alpha|alphanum|date|digits|email|equalTo|iri|max|maxLength|min|minLength|number|range|rangeLength|required|url) #REQUIRED
+                error-message CDATA #IMPLIED>

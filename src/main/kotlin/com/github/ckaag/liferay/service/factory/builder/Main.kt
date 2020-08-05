@@ -10,9 +10,14 @@ import com.github.ajalt.clikt.parameters.types.path
 import com.github.ckaag.liferay.service.factory.builder.mock.Dependencies
 import com.github.ckaag.liferay.service.factory.builder.mock.LogOutput
 import com.github.ckaag.liferay.service.factory.builder.mock.OutputFileWriter
+import com.github.ckaag.service.factory.builder.hints.Field
+import com.github.ckaag.service.factory.builder.hints.Model
+import com.github.ckaag.service.factory.builder.hints.ModelHints
 import com.github.ckaag.service.factory.builder.xml.ServiceBuilder
+import com.github.ckaag.service.factory.builder.xml.Validator
 import java.io.File
 import java.io.StringReader
+import java.lang.IllegalArgumentException
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.xml.bind.JAXBContext
@@ -117,7 +122,50 @@ data class EntityAttributes(val requiredFields: Set<String>)
 
 fun String?.asAttributes() : EntityHints? {
     if (this == null) return null
-    TODO("entity hints parsing not yet implemented")
+
+    val jaxbContext = JAXBContext.newInstance(ModelHints::class.java)
+
+    System.setProperty("javax.xml.accessExternalDTD", "all")
+
+    val jaxbUnmarshaller = jaxbContext.createUnmarshaller()
+
+    val modelHintsXml = jaxbUnmarshaller!!.unmarshal(StringReader(this)) as ModelHints
+    
+    val hints = transformToEntityHints(modelHintsXml)
+    
+    
+    return hints
+}
+
+fun transformToEntityHints(modelHintsXml: ModelHints): EntityHints {
+    val inner : List<Pair<String, EntityAttributes>?> = modelHintsXml.hintCollectionOrModel.map { ent ->
+        when(ent) {
+            is Model -> {
+                Pair(ent.name,
+                    EntityAttributes(
+                        ent.defaultHintsOrField.flatMap { field -> when(field) {
+                            is Field -> {
+                                val fieldname = field.name
+                                field.hintCollectionOrHintOrSanitizeOrValidator.map {validator -> when(validator) {
+                                    is com.github.ckaag.service.factory.builder.hints.Validator -> {
+                                        
+                                        if(validator.name == "required") fieldname else null
+                                    }
+                                    else -> null
+                                } }
+                            }                            
+                            else -> listOf()
+                        }.filterNotNull() }.toSet()
+                    )
+                    )
+            }
+            else -> {
+                println("is not a model: " + ent.javaClass.name)
+                null
+            }
+        }
+    }
+    return EntityHints(inner.filterNotNull().toMap())
 }
 
 fun transformIntoModel(builderXml: ServiceBuilder, hintXml: EntityHints?): ServiceModel {
@@ -132,7 +180,7 @@ fun transformIntoModel(builderXml: ServiceBuilder, hintXml: EntityHints?): Servi
                     EntityColumn(
                         rawColumn.name.capitalize(),
                         if (rawColumn.type == "Collection") null else rawColumn.type,
-                        hintXml?.entityNameToAttributes?.get(rawEntity.name)?.requiredFields?.contains(rawColumn.name)?:false,
+                        hintXml?.entityNameToAttributes?.get(builderXml.packagePath + ".model." + rawEntity.name)?.requiredFields?.contains(rawColumn.name)?:false,
                         "true" == rawColumn.primary
                     )
                 })
