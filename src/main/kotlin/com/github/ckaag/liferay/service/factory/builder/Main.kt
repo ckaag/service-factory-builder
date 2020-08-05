@@ -35,14 +35,26 @@ class ServiceFactoryBuilder : CliktCommand() {
 
     override fun run() {
         if (forceMode || outputDirectory.hasMavenOrGradleProjectRoot()) {
-            val xmlFiles: List<String> = inputXmlFiles.map { it.readText() }
-            xmlFiles.forEach { xml ->
-                generateOutput(xml, typedMode).logOutput(dependencies)
+            inputXmlFiles.forEach { xmlFile ->
+                val xml: String = xmlFile.readText()
+                val hintXml: String? = findHintXml(xmlFile)
+                generateOutput(xml, hintXml, typedMode).logOutput(dependencies)
                     .writeOutputToDisk(dependencies, transientMode)
             }
         } else {
             throw UnsupportedOperationException("outputdirectory '${outputDirectory.toFile().canonicalPath}' does not seem to be part of a maven or gradle project structure, this might be wrongly used. Use '-f' to skip this check and generate the sources regardless of this problem.")
         }
+    }
+
+}
+
+
+private fun findHintXml(xmlFile: File): String? {
+    val file: File? = xmlFile.resolveSibling("./src/main/resources/META-INF/portlet-model-hints.xml")
+    return if (file != null && file.isFile && file.canRead()) {
+        file.readText()
+    } else {
+        null
     }
 }
 
@@ -56,8 +68,8 @@ private fun Path.exists(): Boolean = this.toFile().let { it.exists() && it.canRe
 
 typealias FactoryOutput = Map<Path, String>
 
-fun generateOutput(inputXml: String, typedMode: Boolean): FactoryOutput {
-    val model = parseServiceXmlToModel(inputXml)
+fun generateOutput(inputServiceXml: String, hintXml: String?, typedMode: Boolean): FactoryOutput {
+    val model = parseServiceXmlToModel(inputServiceXml, hintXml)
     val output: FactoryOutput = model.formatAsJavaFilesForOutput(typedMode)
     return output
 }
@@ -87,19 +99,28 @@ fun writeFile(
 }
 
 
-fun parseServiceXmlToModel(xml: String): ServiceModel {
+fun parseServiceXmlToModel(xml: String, hintXml: String?): ServiceModel {
     val jaxbContext = JAXBContext.newInstance(ServiceBuilder::class.java)
 
     System.setProperty("javax.xml.accessExternalDTD", "all")
 
     val jaxbUnmarshaller = jaxbContext.createUnmarshaller()
 
-    val serviceBuilderXml = jaxbUnmarshaller!!.unmarshal(StringReader(xml)) as ServiceBuilder;
+    val serviceBuilderXml = jaxbUnmarshaller!!.unmarshal(StringReader(xml)) as ServiceBuilder
 
-    return transformIntoModel(serviceBuilderXml)
+    return transformIntoModel(serviceBuilderXml, hintXml.asAttributes())
 }
 
-fun transformIntoModel(builderXml: ServiceBuilder): ServiceModel {
+data class EntityHints(val entityNameToAttributes: Map<String, EntityAttributes>)
+
+data class EntityAttributes(val requiredFields: Set<String>)
+
+fun String?.asAttributes() : EntityHints? {
+    if (this == null) return null
+    TODO("entity hints parsing not yet implemented")
+}
+
+fun transformIntoModel(builderXml: ServiceBuilder, hintXml: EntityHints?): ServiceModel {
     return ServiceModel(
         builderXml.entity.map { rawEntity ->
             ServiceEntity(rawEntity.localService == "true",
@@ -111,7 +132,7 @@ fun transformIntoModel(builderXml: ServiceBuilder): ServiceModel {
                     EntityColumn(
                         rawColumn.name.capitalize(),
                         if (rawColumn.type == "Collection") null else rawColumn.type,
-                        true,
+                        hintXml?.entityNameToAttributes?.get(rawEntity.name)?.requiredFields?.contains(rawColumn.name)?:false,
                         "true" == rawColumn.primary
                     )
                 })
@@ -121,11 +142,11 @@ fun transformIntoModel(builderXml: ServiceBuilder): ServiceModel {
 
 data class ServiceModel(val entities: List<ServiceEntity>) {
     fun formatAsJavaFilesForOutput(typedMode: Boolean): FactoryOutput {
-        return entities.map {
-            formatOutputClassFilepath(it) to formatOutputClassFile(
+        return entities.flatMap {
+            formatOutputClassFile(
                 it,
                 typedMode
-            )
+            ).entries.map { entry -> Pair(entry.key, entry.value) }.toList()
         }.toMap()
     }
 }
@@ -166,14 +187,14 @@ data class ServiceEntity(
 data class EntityColumn(
     val name: String,
     val type: String?,
-    val required: Boolean = true,
-    val primaryKey: Boolean = false
+    val required: Boolean,
+    val primaryKey: Boolean
 ) {
     fun isObjectType(): Boolean? = type?.let { getDefaultValueForType(it) == "null" }
 }
 
 
-fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): String {
+fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): Map<Path, String> {
     if (typedMode) {
         TODO("typedMode is not yet implemented")
     }
@@ -255,7 +276,7 @@ public class ${builder} {
             """.trimIndent()
                 )
                 if (col.required && col.isObjectType() == true) {
-                    finalBuildMethod.appendln("""require(this._${col.name});""");
+                    finalBuildMethod.appendln("""require(this._${col.name});""")
                 }
                 if (col.isObjectType() != null) {
                     finalBuildMethod.appendln("""entity.set${col.name}(this._${col.name});""")
@@ -271,7 +292,7 @@ public class ${builder} {
     """.trimIndent()
     )
 
-    return "$prefix$functionDefinitions\n$finalBuildMethod\n\n}\n"
+    return mapOf(Pair(formatOutputClassFilepath(e), "$prefix$functionDefinitions\n$finalBuildMethod\n\n}\n"))
 }
 
 fun getDefaultValueForType(type: String): String {

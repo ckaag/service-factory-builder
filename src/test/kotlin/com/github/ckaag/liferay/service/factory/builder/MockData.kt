@@ -1,20 +1,10 @@
-package com.github.ckaag.liferay.service.factory.builder.mock
+package com.github.ckaag.liferay.service.factory.builder
 
-import com.github.ckaag.liferay.service.factory.builder.generateOutput
-import com.github.ckaag.liferay.service.factory.builder.logOutput
-import com.github.ckaag.liferay.service.factory.builder.writeOutputToDisk
+import com.github.ckaag.liferay.service.factory.builder.mock.Dependencies
 
 /**
  * Created by usickaag on Freitag, 24.07.2020 at 13:22.
  */
-
-
-
-fun withExampleServiceXml() {
-    val xml = exampleServiceXml
-    val dep = Dependencies()
-    generateOutput(xml, false).logOutput(dep).writeOutputToDisk(dep)
-}
 
 
 
