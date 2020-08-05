@@ -39,7 +39,7 @@ class ServiceFactoryBuilder : CliktCommand() {
 
 private fun File.hasMavenOrGradleProjectRoot(): Boolean {
     val mvnRoot = this.resolve("./../../../")
-    return mvnRoot.resolve("build.gradle").exists() || mvnRoot.resolve("pom.xml").exists()
+    return mvnRoot.resolve("build.gradle.kts").exists() || mvnRoot.resolve("build.gradle").exists() || mvnRoot.resolve("pom.xml").exists()
 }
 
 typealias FactoryOutput = Map<String, String>
