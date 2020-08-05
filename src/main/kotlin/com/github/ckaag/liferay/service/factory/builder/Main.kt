@@ -1,15 +1,70 @@
+package com.github.ckaag.liferay.service.factory.builder
+
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.multiple
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.file
 import com.github.ckaag.service.factory.builder.xml.ServiceBuilder
+import exampleServiceXml
 import java.io.File
 import java.io.StringReader
 import javax.xml.bind.JAXBContext
 
-fun main() {
-    val xml = exampleServiceXml
-    val model = parseServiceXmlToModel(xml)
-    val output: Map<String, String> = model.formatAsJavaFilesForOutput()
-    output.entries.forEach { println(it.key + ":\n====\n" + it.value + "\n========\n\n") }
 
-    output.forEach { filepath, filecontent -> writeFile(filepath, filecontent) }
+fun main(args: Array<String>) = ServiceFactoryBuilder().main(args)
+
+const val ROOT_JAVA_SRC_DIR = "./src/main/java/"
+
+class ServiceFactoryBuilder : CliktCommand() {
+
+    val typedMode: Boolean by option("-t", "--typed").flag()
+    val transientMode: Boolean by option("-z", "--transient").flag()
+    val forceMode: Boolean by option("-f", "--force").flag()
+    val inputXmlFiles: List<File> by option("-i", "--input-files").file().multiple(required = true)
+    val outputDirectory: File by option("-o", "--output-directory").file().default(File(ROOT_JAVA_SRC_DIR))
+
+    override fun run() {
+        if (forceMode || outputDirectory.hasMavenOrGradleProjectRoot()) {
+            val xmlFiles: List<String> = inputXmlFiles.map { it.readText() }
+            xmlFiles.forEach { xml ->
+                generateOutput(outputDirectory, xml, typedMode).logOutput().writeOutputToDisk(transientMode)
+            }
+        } else {
+            throw UnsupportedOperationException("outputdirectory '${outputDirectory.canonicalPath}' does not seem to be part of a maven or gradle project structure, this might be wrongly used. Use '-f' to skip this check and generate the sources regardless of this problem.")
+        }
+    }
+}
+
+private fun File.hasMavenOrGradleProjectRoot(): Boolean {
+    val mvnRoot = this.resolve("./../../../")
+    return mvnRoot.resolve("build.gradle").exists() || mvnRoot.resolve("pom.xml").exists()
+}
+
+typealias FactoryOutput = Map<String, String>
+
+fun generateOutput(targetOutputDirectory: File, inputXml: String, typedMode: Boolean): FactoryOutput {
+    val model = parseServiceXmlToModel(inputXml)
+    val output: Map<String, String> = model.formatAsJavaFilesForOutput(targetOutputDirectory, typedMode)
+    return output
+}
+
+fun FactoryOutput.logOutput(): FactoryOutput {
+    this.entries.forEach { println(it.key + ":\n====\n" + it.value + "\n========\n\n") }
+    return this
+}
+
+fun FactoryOutput.writeOutputToDisk(transientMode: Boolean = false): FactoryOutput {
+    if (!transientMode) {
+        this.forEach { filepath, filecontent -> writeFile(filepath, filecontent) }
+    }
+    return this
+}
+
+fun withExampleServiceXml() {
+    val xml = exampleServiceXml
+    generateOutput(File(ROOT_JAVA_SRC_DIR), xml, false).logOutput().writeOutputToDisk()
 }
 
 fun writeFile(filepath: String, filecontent: String) {
@@ -53,12 +108,17 @@ fun transformIntoModel(builderXml: ServiceBuilder): ServiceModel {
 }
 
 data class ServiceModel(val entities: List<ServiceEntity>) {
-    fun formatAsJavaFilesForOutput(): Map<String, String> {
-        return entities.map { formatOutputClassFilepath(it) to formatOutputClassFile(it) }.toMap()
+    fun formatAsJavaFilesForOutput(targetSrcRootDirectory: File, typedMode: Boolean): Map<String, String> {
+        return entities.map {
+            formatOutputClassFilepath(it, targetSrcRootDirectory) to formatOutputClassFile(
+                it,
+                typedMode
+            )
+        }.toMap()
     }
 }
 
-private fun formatOutputClassFilepath(e: ServiceEntity): String {
+private fun formatOutputClassFilepath(e: ServiceEntity, targetSrcRootDirectory: File): String {
     return "./src/main/java/${e.pckge.packageToPath()}/factory/${e.name}Factory.java"
 }
 
@@ -100,7 +160,7 @@ data class EntityColumn(
 }
 
 
-fun formatOutputClassFile(e: ServiceEntity): String {
+fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): String {
     val builder = e.name + "Factory"
     val prefix = """package ${e.pckge}.factory;
         

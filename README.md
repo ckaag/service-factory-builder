@@ -13,3 +13,4 @@ TODO:
 * integration as maven plugin
 * target folder configurable (e.g. to move to generated)
 * unit testing for both modes to compare against
+* read service builder model hints to find out which fields are actually required and which are not
