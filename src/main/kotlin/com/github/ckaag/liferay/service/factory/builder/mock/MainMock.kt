@@ -13,7 +13,7 @@ import java.nio.file.Path
 sealed class OutputFileWriter {
     class MockOutputFileWriter(
         val outputs: MutableMap<Path, String> = mutableMapOf(),
-        var onAdd: (Path, String) -> Unit = { i, j -> }
+        var onAdd: (Path, String) -> Unit = { _, _ -> }
     ) : OutputFileWriter() {
         override fun write(path: Path, content: String) {
             this.outputs[path] = content
@@ -37,7 +37,7 @@ sealed class OutputFileWriter {
 sealed class LogOutput {
     class MockLogOutput(
         val outputtedLines: MutableList<String> = mutableListOf(),
-        var onAdd: (String) -> Unit = { i -> }
+        var onAdd: (String) -> Unit = { }
     ) : LogOutput() {
         override fun info(s: String) {
             println(s)
