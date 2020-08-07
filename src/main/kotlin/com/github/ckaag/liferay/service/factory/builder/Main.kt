@@ -73,8 +73,7 @@ typealias FactoryOutput = Map<Path, String>
 
 fun generateOutput(inputServiceXml: String, hintXml: String?, typedMode: Boolean): FactoryOutput {
     val model = parseServiceXmlToModel(inputServiceXml, hintXml)
-    val output: FactoryOutput = model.formatAsJavaFilesForOutput(typedMode)
-    return output
+    return model.formatAsJavaFilesForOutput(typedMode)
 }
 
 fun FactoryOutput.logOutput(dependencies: Dependencies): FactoryOutput {
@@ -129,10 +128,8 @@ fun String?.asAttributes(): EntityHints? {
 
     val modelHintsXml = jaxbUnmarshaller!!.unmarshal(StringReader(this)) as ModelHints
 
-    val hints = transformToEntityHints(modelHintsXml)
 
-
-    return hints
+    return transformToEntityHints(modelHintsXml)
 }
 
 fun transformToEntityHints(modelHintsXml: ModelHints): EntityHints {
@@ -226,13 +223,12 @@ data class ServiceEntity(
     fun getAllColumns(): List<EntityColumn> = this.columns.toList() + this.hardRefColumns
     fun generateIdParamsWithType(): String {
         //comma separated list of all parts of the primary key, as used for a parameter list
-        return getAllColumns().filter { it.primaryKey }.map { it.type + " " + it.name.decapitalize() }
-            .joinToString(", ")
+        return getAllColumns().filter { it.primaryKey }.joinToString(", ") { it.type + " " + it.name.decapitalize() }
     }
 
     fun generateIdParamsWithoutType(): String {
         //comma separated list of all parts of the primary key, as used for a callee list
-        return getAllColumns().filter { it.primaryKey }.map { it.name.decapitalize() }.joinToString(", ")
+        return getAllColumns().filter { it.primaryKey }.joinToString(", ") { it.name.decapitalize() }
     }
 
     val hardRefColumns = listOf<EntityColumn>() //TODO: add things uuid etc.
@@ -264,7 +260,9 @@ private fun formatOutputJavaFileContent(
     fun classNameWithout(fieldName: String): String =
         formatClassName(e.name, missingRequiredFields.filter { it != fieldName })
 
-    fun classNameWith(fieldName: String): String = formatClassName(e.name, plus(missingRequiredFields, fieldName).toList())
+    fun classNameWith(fieldName: String): String =
+        formatClassName(e.name, plus(missingRequiredFields, fieldName).toList())
+
     fun builderWithout(fieldName: String): String = classNameWithout(fieldName) + "Factory"
     fun builderWith(fieldName: String): String = classNameWith(fieldName) + "Factory"
     val emptyBuilder = formatClassName(e.name, allRequiredFields.toList()) + "Factory"
@@ -278,7 +276,7 @@ import ${e.pckge}.service.*;
 import ${e.pckge}.service.persistence.*;
 import java.util.*;
         
-public class ${builder} {
+public class $builder {
             
     private ${builder}() {}
     
@@ -289,9 +287,9 @@ public class ${builder} {
 """
 
     if (missingRequiredFields.isEmpty()) {
-        prefix = prefix + """
+        prefix += """
             
-    public static ${emptyBuilder} builder() {
+    public static $emptyBuilder builder() {
         return new ${emptyBuilder}();
     }
 
@@ -304,7 +302,7 @@ public class ${builder} {
 
     if (allRequiredFields.isNotEmpty()) {
         //create copy constructors that will be called from other setters
-        copyConstructorMethods.forEach { columnNameThatWasAdded, sb ->
+        copyConstructorMethods.forEach { (columnNameThatWasAdded, sb) ->
             sb.appendln(
                 """
                     public ${builder}(${builderWith(columnNameThatWasAdded)} other) {
@@ -318,12 +316,12 @@ public class ${builder} {
         if (e.hasLocalService) {
             finalBuildMethod.appendln(
                 """
-            public ${className} build(${className}LocalService service) {
+            public $className build(${className}LocalService service) {
                 return this.build(CounterLocalServiceUtil.increment(${className}.class.getName()), service);
             }
             
-            public ${className} build(${e.generateIdParamsWithType()}, ${className}LocalService service) {
-            ${className} entity = service.create${className}(${e.generateIdParamsWithoutType()});
+            public $className build(${e.generateIdParamsWithType()}, ${className}LocalService service) {
+            $className entity = service.create${className}(${e.generateIdParamsWithoutType()});
             return this.build(entity);
             }
             """
@@ -331,12 +329,12 @@ public class ${builder} {
         } else {
             finalBuildMethod.appendln(
                 """//TODO: add a second builder that generates a new id (this one can just generate a new id via counterlocalservice)
-            public ${className} build(${className}Persistence persistence) {
+            public $className build(${className}Persistence persistence) {
                 return this.build(CounterLocalServiceUtil.increment(${className}.class.getName()), persistence);
             }
             
-            public ${className} build(${e.generateIdParamsWithType()}, ${className}Persistence persistence) {
-            ${className} entity = persistence.create(${e.generateIdParamsWithoutType()});
+            public $className build(${e.generateIdParamsWithType()}, ${className}Persistence persistence) {
+            $className entity = persistence.create(${e.generateIdParamsWithoutType()});
             return this.build(entity);
             }
             """
@@ -346,7 +344,7 @@ public class ${builder} {
     if (missingRequiredFields.isEmpty()) {
         finalBuildMethod.appendln(
             """
-        public ${className} build(${className} entity) {
+        public $className build(${className} entity) {
     """.trimIndent()
         )
     }
@@ -357,7 +355,7 @@ public class ${builder} {
 
                 if (allRequiredFields.isNotEmpty()) {
                     //("add column to copy constructors from other.get{col.name}")
-                    copyConstructorMethods.forEach { cn, sb -> 
+                    copyConstructorMethods.forEach { (_, sb) ->
                         sb.appendln("""this._${col.name} = other.get{col.name}();""")
                     }
                 }
@@ -382,7 +380,7 @@ public class ${builder} {
                 } else {
                     functionDefinitions.appendln(
                         """
-                public ${builder} set${col.name}(${col.type} value) {
+                public $builder set${col.name}(${col.type} value) {
                     this._${col.name} = value;
                     return this;
                 }
@@ -457,7 +455,7 @@ private fun <T> buildSubsetHelper(fullSet: List<T>, n: Int): List<List<T>> {
         l.map { listOf(it) }
     } else {
         val o: List<List<T>> = l.mapIndexed { idx, pivot ->
-            val rest = l.filterIndexed { index, t -> index != idx }
+            val rest = l.filterIndexed { index, _ -> index != idx }
             val lower = buildSubsetHelper(rest, n - 1)
             lower.map { it + pivot }
         }.flatten()
@@ -469,12 +467,11 @@ fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): Map<Path, Strin
     if (typedMode) {
         val reqFields: Set<String> = e.getRequiredFieldNames()
         val permutes = buildPartialSubsets(reqFields, true, true)
-        val o = permutes.map { perm ->
+        return permutes.map { perm ->
             val filename: Path = formatOutputClassFilepath(e, perm)
             val content: String = formatOutputJavaFileContent(e, perm, reqFields)
             Pair(filename, content)
         }.toMap()
-        return o
     } else {
         val missingFields = setOf<String>()
         val simpleClass = formatOutputJavaFileContent(e, missingFields, missingFields)

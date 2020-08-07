@@ -1,7 +1,7 @@
 plugins {
     java
     kotlin("jvm") version "1.3.72"
-    `application`
+    application
 }
 
 group = "org.example"
@@ -24,9 +24,8 @@ dependencies {
     implementation("com.sun.xml.bind", "jaxb-impl", "2.3.0")
     implementation("com.sun.xml.bind", "jaxb-core", "2.3.0")
     implementation("javax.activation", "javax.activation-api", "1.2.0")
-    implementation("com.unymira", "bistro-persistence-api", "1.0.0")
     implementation("com.liferay.portal", "com.liferay.portal.kernel", "4.33.0")
-    implementation ("com.github.ajalt", "clikt", "2.3.0")
+    implementation("com.github.ajalt", "clikt", "2.3.0")
 
 }
 
