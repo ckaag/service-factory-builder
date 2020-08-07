@@ -20,12 +20,26 @@ class MainKtTest {
         val output = generateOutput(exampleServiceXml, null, false)
         Assert.assertTrue(output.entries.find { it.key.toString().contains("BistroItemOrderFactory.java") }!!.value.contains("public BistroItemOrderFactory setTimestamp(Date value) {") )
     }
-    
+
     @Test
     fun testGenerateOutputTypedSimpleSize() {
         val xml = simpleTypedXml
         val output = generateOutput(xml,  simpleTypedXmlHints,true)
-        Assert.assertEquals(4*3*2*1 + 1, output.size)
+        Assert.assertEquals(1+4+6+4 + 1, output.size)
+    }
+
+    @Test
+    fun testGenerateOnlyOneBuilderMethodForTyped() {
+        val xml = simpleTypedXml
+        val output = generateOutput(xml,  simpleTypedXmlHints,true)
+        Assert.assertEquals(1, output.count { it.value.contains(" builder() ") })
+    }
+
+    @Test
+    fun testGenerateOnlyOneBuildMethodForTyped() {
+        val xml = simpleTypedXml
+        val output = generateOutput(xml,  simpleTypedXmlHints,true)
+        Assert.assertEquals(1, output.count { it.value.contains(" build(") })
     }
     
 }

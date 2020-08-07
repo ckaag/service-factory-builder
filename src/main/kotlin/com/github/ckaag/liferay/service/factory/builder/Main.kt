@@ -118,7 +118,7 @@ data class EntityHints(val entityNameToAttributes: Map<String, EntityAttributes>
 
 data class EntityAttributes(val requiredFields: Set<String>)
 
-fun String?.asAttributes() : EntityHints? {
+fun String?.asAttributes(): EntityHints? {
     if (this == null) return null
 
     val jaxbContext = JAXBContext.newInstance(ModelHints::class.java)
@@ -128,34 +128,39 @@ fun String?.asAttributes() : EntityHints? {
     val jaxbUnmarshaller = jaxbContext.createUnmarshaller()
 
     val modelHintsXml = jaxbUnmarshaller!!.unmarshal(StringReader(this)) as ModelHints
-    
+
     val hints = transformToEntityHints(modelHintsXml)
-    
-    
+
+
     return hints
 }
 
 fun transformToEntityHints(modelHintsXml: ModelHints): EntityHints {
-    val inner : List<Pair<String, EntityAttributes>?> = modelHintsXml.hintCollectionOrModel.map { ent ->
-        when(ent) {
+    val inner: List<Pair<String, EntityAttributes>?> = modelHintsXml.hintCollectionOrModel.map { ent ->
+        when (ent) {
             is Model -> {
-                Pair(ent.name,
+                Pair(
+                    ent.name,
                     EntityAttributes(
-                        ent.defaultHintsOrField.flatMap { field -> when(field) {
-                            is Field -> {
-                                val fieldname = field.name
-                                field.hintCollectionOrHintOrSanitizeOrValidator.map {validator -> when(validator) {
-                                    is com.github.ckaag.service.factory.builder.hints.Validator -> {
-                                        
-                                        if(validator.name == "required") fieldname else null
+                        ent.defaultHintsOrField.flatMap { field ->
+                            when (field) {
+                                is Field -> {
+                                    val fieldname = field.name
+                                    field.hintCollectionOrHintOrSanitizeOrValidator.map { validator ->
+                                        when (validator) {
+                                            is com.github.ckaag.service.factory.builder.hints.Validator -> {
+
+                                                if (validator.name == "required") fieldname else null
+                                            }
+                                            else -> null
+                                        }
                                     }
-                                    else -> null
-                                } }
-                            }                            
-                            else -> listOf()
-                        }.filterNotNull() }.toSet()
+                                }
+                                else -> listOf()
+                            }.filterNotNull()
+                        }.toSet()
                     )
-                    )
+                )
             }
             else -> {
                 println("is not a model: " + ent.javaClass.name)
@@ -178,7 +183,9 @@ fun transformIntoModel(builderXml: ServiceBuilder, hintXml: EntityHints?): Servi
                     EntityColumn(
                         rawColumn.name.capitalize(),
                         if (rawColumn.type == "Collection") null else rawColumn.type,
-                        hintXml?.entityNameToAttributes?.get(builderXml.packagePath + ".model." + rawEntity.name)?.requiredFields?.contains(rawColumn.name)?:false,
+                        hintXml?.entityNameToAttributes?.get(builderXml.packagePath + ".model." + rawEntity.name)?.requiredFields?.contains(
+                            rawColumn.name
+                        ) ?: false,
                         "true" == rawColumn.primary
                     )
                 })
@@ -197,8 +204,9 @@ data class ServiceModel(val entities: List<ServiceEntity>) {
     }
 }
 
-private fun formatOutputClassFilepath(e: ServiceEntity): Path {
-    val subpath = "${e.pckge.packageToPath()}/factory/${e.name}Factory.java"
+private fun formatOutputClassFilepath(e: ServiceEntity, missingFields: Set<String>): Path {
+    val cn = formatClassName(e.name, missingFields.toList())
+    val subpath = "${e.pckge.packageToPath()}/factory/${cn}Factory.java"
     return Paths.get(subpath)
 }
 
@@ -239,51 +247,30 @@ data class EntityColumn(
     fun isObjectType(): Boolean? = type?.let { getDefaultValueForType(it) == "null" }
 }
 
-private fun formatOutputJavaFileContent(e: ServiceEntity, missingRequiredFields: Set<String>): String {
-    TODO("not yet implemented")
+private fun plus(set: Set<String>, x: String): Set<String> {
+    val m = mutableSetOf<String>()
+    set.forEach { m.add(it) }
+    m.add(x)
+    return m
 }
 
-private fun formatClassName(baseClassName: String, missingRequiredFields : Set<String>) : String {
-    TODO("not yet implemented")
-}
+private fun formatOutputJavaFileContent(
+    e: ServiceEntity,
+    missingRequiredFields: Set<String>,
+    allRequiredFields: Set<String>
+): String {
 
-//finds all partial sets (but excludes empty sets)
-fun <T> buildPartialSubsets(baseFullSet: Set<T>, includeItselfInOutput: Boolean = true) : Set<Set<T>> {
-    val items = baseFullSet.toList()
-    val output = mutableListOf<Set<T>>()
-    val baseList = baseFullSet.toList()
-    (items.size - 1 downTo 1).forEach {n ->
-        val i : List<List<T>> = buildSubsetHelper(baseList, n)
-            i.forEach { k ->
-            output.add(k.toSet())
-        }
-    }
-    output.add(baseFullSet)
-    return output.toSet()
-}
+    val className = formatClassName(e.name, missingRequiredFields.toList())
+    fun classNameWithout(fieldName: String): String =
+        formatClassName(e.name, missingRequiredFields.filter { it != fieldName })
 
-//recursive helper function
-private fun <T> buildSubsetHelper(fullSet: List<T>, n: Int) : List<List<T>> {
-    if (fullSet.isEmpty()) return emptyList()
-    val l = fullSet.toList()
-    return if (n == 1) {
-        l.map { listOf(it) }
-    } else {
-        val o : List<List<T>> = l.mapIndexed{ idx, pivot->
-            val rest = l.filterIndexed { index, t -> index != idx }
-            val lower = buildSubsetHelper(rest, n - 1)
-            lower.map { it + pivot }
-        }.flatten()
-        o
-    }
-}
+    fun classNameWith(fieldName: String): String = formatClassName(e.name, plus(missingRequiredFields, fieldName).toList())
+    fun builderWithout(fieldName: String): String = classNameWithout(fieldName) + "Factory"
+    fun builderWith(fieldName: String): String = classNameWith(fieldName) + "Factory"
+    val emptyBuilder = formatClassName(e.name, allRequiredFields.toList()) + "Factory"
 
-fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): Map<Path, String> {
-    if (typedMode) {
-        TODO("typedMode is not yet implemented")
-    }
-    val builder = e.name + "Factory"
-    val prefix = """package ${e.pckge}.factory;
+    val builder = className + "Factory"
+    var prefix = """package ${e.pckge}.factory;
         
 import com.liferay.counter.kernel.service.CounterLocalServiceUtil;
 import ${e.pckge}.model.*;
@@ -299,84 +286,204 @@ public class ${builder} {
         Objects.requireNonNull(object);
     }
 
-    public static ${builder} builder() {
-        return new ${builder}();
+"""
+
+    if (missingRequiredFields.isEmpty()) {
+        prefix = prefix + """
+            
+    public static ${emptyBuilder} builder() {
+        return new ${emptyBuilder}();
     }
 
-"""
+        """
+    }
 
     val functionDefinitions = StringBuilder()
     val finalBuildMethod = StringBuilder()
+    val copyConstructorMethods: Map<String, StringBuilder> = allRequiredFields.map { Pair(it, StringBuilder()) }.toMap()
 
-    if (e.hasLocalService) {
-        finalBuildMethod.appendln(
-            """
-            public ${e.name} build(${e.name}LocalService service) {
-                return this.build(CounterLocalServiceUtil.increment(${e.name}.class.getName()), service);
-            }
-            
-            public ${e.name} build(${e.generateIdParamsWithType()}, ${e.name}LocalService service) {
-            ${e.name} entity = service.create${e.name}(${e.generateIdParamsWithoutType()});
-            return this.build(entity);
-            }
-            """
-        )
-    } else {
-        finalBuildMethod.appendln(
-            """//TODO: add a second builder that generates a new id (this one can just generate a new id via counterlocalservice)
-            public ${e.name} build(${e.name}Persistence persistence) {
-                return this.build(CounterLocalServiceUtil.increment(${e.name}.class.getName()), persistence);
-            }
-            
-            public ${e.name} build(${e.generateIdParamsWithType()}, ${e.name}Persistence persistence) {
-            ${e.name} entity = persistence.create(${e.generateIdParamsWithoutType()});
-            return this.build(entity);
-            }
-            """
-        )
+    if (allRequiredFields.isNotEmpty()) {
+        //create copy constructors that will be called from other setters
+        copyConstructorMethods.forEach { columnNameThatWasAdded, sb ->
+            sb.appendln(
+                """
+                    public ${builder}(${builderWith(columnNameThatWasAdded)} other) {
+                """.trimIndent()
+            )
+        }
+        //("copy all fields from previous builder to new instance without setters but using getters on old")
     }
 
-    finalBuildMethod.appendln(
-        """
-        public ${e.name} build(${e.name} entity) {
+    if (missingRequiredFields.isEmpty()) {
+        if (e.hasLocalService) {
+            finalBuildMethod.appendln(
+                """
+            public ${className} build(${className}LocalService service) {
+                return this.build(CounterLocalServiceUtil.increment(${className}.class.getName()), service);
+            }
+            
+            public ${className} build(${e.generateIdParamsWithType()}, ${className}LocalService service) {
+            ${className} entity = service.create${className}(${e.generateIdParamsWithoutType()});
+            return this.build(entity);
+            }
+            """
+            )
+        } else {
+            finalBuildMethod.appendln(
+                """//TODO: add a second builder that generates a new id (this one can just generate a new id via counterlocalservice)
+            public ${className} build(${className}Persistence persistence) {
+                return this.build(CounterLocalServiceUtil.increment(${className}.class.getName()), persistence);
+            }
+            
+            public ${className} build(${e.generateIdParamsWithType()}, ${className}Persistence persistence) {
+            ${className} entity = persistence.create(${e.generateIdParamsWithoutType()});
+            return this.build(entity);
+            }
+            """
+            )
+        }
+    }
+    if (missingRequiredFields.isEmpty()) {
+        finalBuildMethod.appendln(
+            """
+        public ${className} build(${className} entity) {
     """.trimIndent()
-    )
+        )
+    }
 
     e.getAllColumns().forEach { col ->
         if (!col.primaryKey) {
             if (col.type != null) {
+
+                if (allRequiredFields.isNotEmpty()) {
+                    //("add column to copy constructors from other.get{col.name}")
+                    copyConstructorMethods.forEach { cn, sb -> 
+                        sb.appendln("""this._${col.name} = other.get{col.name}();""")
+                    }
+                }
+
+
                 functionDefinitions.appendln(
                     """
                 private ${col.type} _${col.name} = ${getDefaultValueForType(col.type)};
                 
                 public ${col.type} get${col.name}() {
                     return this._${col.name};
+                }""".trimIndent()
+                )
+                if (missingRequiredFields.contains(col.name)) {
+                    functionDefinitions.appendln(
+                        """
+                public ${builderWithout(col.name)} set${col.name}(${col.type} value) {
+                    return ${builderWithout(col.name)}(this).set${col.name}(value);
                 }
-                
+            """.trimIndent()
+                    )
+                } else {
+                    functionDefinitions.appendln(
+                        """
                 public ${builder} set${col.name}(${col.type} value) {
                     this._${col.name} = value;
                     return this;
                 }
             """.trimIndent()
-                )
-                if (col.required && col.isObjectType() == true) {
-                    finalBuildMethod.appendln("""require(this._${col.name});""")
+                    )
                 }
-                if (col.isObjectType() != null) {
-                    finalBuildMethod.appendln("""entity.set${col.name}(this._${col.name});""")
+                if (missingRequiredFields.isEmpty()) {
+                    if (col.required && col.isObjectType() == true) {
+                        finalBuildMethod.appendln("""require(this._${col.name});""")
+                    }
+                    if (col.isObjectType() != null) {
+                        finalBuildMethod.appendln("""entity.set${col.name}(this._${col.name});""")
+                    }
                 }
             }
         }
     }
 
-    finalBuildMethod.appendln(
-        """
+    if (missingRequiredFields.isEmpty()) {
+        finalBuildMethod.appendln(
+            """
             return entity;
         }
     """.trimIndent()
-    )
+        )
+    }
 
-    return mapOf(Pair(formatOutputClassFilepath(e), "$prefix$functionDefinitions\n$finalBuildMethod\n\n}\n"))
+
+    if (allRequiredFields.isNotEmpty()) {
+        //finish up with copy constructors
+        copyConstructorMethods.forEach { it.value.appendln("\n}\n") }
+    }
+
+
+    //there will only be a build method if all required fields were set at least
+    return "$prefix$functionDefinitions\n$finalBuildMethod\n${copyConstructorMethods.map { it.value.toString() }
+        .joinToString("\n")}\n\n}\n"
+}
+
+private fun formatClassName(baseClassName: String, missingRequiredFields: List<String>): String {
+    return if (missingRequiredFields.isEmpty()) baseClassName else formatClassName(
+        "${baseClassName}_without_${missingRequiredFields.first()}",
+        missingRequiredFields.drop(1)
+    )
+}
+
+//finds all partial sets (but excludes empty sets)
+fun <T> buildPartialSubsets(baseFullSet: Set<T>, includeItselfInOutput: Boolean, includeEmpty: Boolean): Set<Set<T>> {
+    val items = baseFullSet.toList()
+    val output = mutableListOf<Set<T>>()
+    val baseList = baseFullSet.toList()
+    (items.size - 1 downTo 1).forEach { n ->
+        val i: List<List<T>> = buildSubsetHelper(baseList, n)
+        i.forEach { k ->
+            output.add(k.toSet())
+        }
+    }
+    if (includeItselfInOutput) {
+        output.add(baseFullSet)
+    }
+    if (includeEmpty) {
+        output.add(setOf())
+    }
+    return output.toSet()
+}
+
+//recursive helper function
+private fun <T> buildSubsetHelper(fullSet: List<T>, n: Int): List<List<T>> {
+    if (fullSet.isEmpty()) return emptyList()
+    val l = fullSet.toList()
+    return if (n == 1) {
+        l.map { listOf(it) }
+    } else {
+        val o: List<List<T>> = l.mapIndexed { idx, pivot ->
+            val rest = l.filterIndexed { index, t -> index != idx }
+            val lower = buildSubsetHelper(rest, n - 1)
+            lower.map { it + pivot }
+        }.flatten()
+        o
+    }
+}
+
+fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): Map<Path, String> {
+    if (typedMode) {
+        val reqFields: Set<String> = e.getRequiredFieldNames()
+        val permutes = buildPartialSubsets(reqFields, true, true)
+        val o = permutes.map { perm ->
+            val filename: Path = formatOutputClassFilepath(e, perm)
+            val content: String = formatOutputJavaFileContent(e, perm, reqFields)
+            Pair(filename, content)
+        }.toMap()
+        return o
+    } else {
+        val missingFields = setOf<String>()
+        val simpleClass = formatOutputJavaFileContent(e, missingFields, missingFields)
+        return mapOf(Pair(formatOutputClassFilepath(e, missingFields), simpleClass))
+    }
+}
+
+private fun ServiceEntity.getRequiredFieldNames(): Set<String> {
+    return this.columns.filter { it.required }.map { it.name }.toSet()
 }
 
 fun getDefaultValueForType(type: String): String {
