@@ -14,10 +14,8 @@ import com.github.ckaag.service.factory.builder.hints.Field
 import com.github.ckaag.service.factory.builder.hints.Model
 import com.github.ckaag.service.factory.builder.hints.ModelHints
 import com.github.ckaag.service.factory.builder.xml.ServiceBuilder
-import com.github.ckaag.service.factory.builder.xml.Validator
 import java.io.File
 import java.io.StringReader
-import java.lang.IllegalArgumentException
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.xml.bind.JAXBContext
@@ -241,6 +239,44 @@ data class EntityColumn(
     fun isObjectType(): Boolean? = type?.let { getDefaultValueForType(it) == "null" }
 }
 
+private fun formatOutputJavaFileContent(e: ServiceEntity, missingRequiredFields: Set<String>): String {
+    TODO("not yet implemented")
+}
+
+private fun formatClassName(baseClassName: String, missingRequiredFields : Set<String>) : String {
+    TODO("not yet implemented")
+}
+
+//finds all partial sets (but excludes empty sets)
+fun <T> buildPartialSubsets(baseFullSet: Set<T>, includeItselfInOutput: Boolean = true) : Set<Set<T>> {
+    val items = baseFullSet.toList()
+    val output = mutableListOf<Set<T>>()
+    val baseList = baseFullSet.toList()
+    (items.size - 1 downTo 1).forEach {n ->
+        val i : List<List<T>> = buildSubsetHelper(baseList, n)
+            i.forEach { k ->
+            output.add(k.toSet())
+        }
+    }
+    output.add(baseFullSet)
+    return output.toSet()
+}
+
+//recursive helper function
+private fun <T> buildSubsetHelper(fullSet: List<T>, n: Int) : List<List<T>> {
+    if (fullSet.isEmpty()) return emptyList()
+    val l = fullSet.toList()
+    return if (n == 1) {
+        l.map { listOf(it) }
+    } else {
+        val o : List<List<T>> = l.mapIndexed{ idx, pivot->
+            val rest = l.filterIndexed { index, t -> index != idx }
+            val lower = buildSubsetHelper(rest, n - 1)
+            lower.map { it + pivot }
+        }.flatten()
+        o
+    }
+}
 
 fun formatOutputClassFile(e: ServiceEntity, typedMode: Boolean): Map<Path, String> {
     if (typedMode) {
