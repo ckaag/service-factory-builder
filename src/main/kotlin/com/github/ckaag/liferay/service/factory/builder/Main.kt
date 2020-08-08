@@ -280,7 +280,7 @@ import java.util.*;
         
 public class $builder {
             
-    private ${builder}() {}
+    ${builder}() {}
     
     private static void require(Object object) {
         Objects.requireNonNull(object);
@@ -358,7 +358,7 @@ public class $builder {
                 if (allRequiredFields.isNotEmpty()) {
                     //("add column to copy constructors from other.get{col.name}")
                     copyConstructorMethods.forEach { (_, sb) ->
-                        sb.appendln("""this._${col.name} = other.get{col.name}();""")
+                        sb.appendln("""this._${col.name} = other.get${col.name}();""")
                     }
                 }
 
@@ -375,7 +375,7 @@ public class $builder {
                     functionDefinitions.appendln(
                         """
                 public ${builderWithout(col.name)} set${col.name}(${col.type} value) {
-                    return ${builderWithout(col.name)}(this).set${col.name}(value);
+                    return new ${builderWithout(col.name)}(this).set${col.name}(value);
                 }
             """.trimIndent()
                     )
@@ -422,7 +422,8 @@ public class $builder {
         .joinToString("\n")}\n\n}\n"
 }
 
-private fun formatClassName(baseClassName: String, missingRequiredFields: List<String>): String {
+private fun formatClassName(baseClassName: String, missingRequiredFieldsInput: List<String>): String {
+    val missingRequiredFields: List<String> = missingRequiredFieldsInput.sorted()
     return if (missingRequiredFields.isEmpty()) baseClassName else formatClassName(
         "${baseClassName}_without_${missingRequiredFields.first()}",
         missingRequiredFields.drop(1)
