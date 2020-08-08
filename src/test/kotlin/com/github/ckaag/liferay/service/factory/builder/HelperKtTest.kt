@@ -27,4 +27,17 @@ internal class HelperKtTest {
         Assert.assertEquals(1, output.count { it.size == 3 })
         Assert.assertEquals(0, output.count { it.size == 4 })
     }
+    @Test
+    fun testFindMissingInSets() {
+        val a = setOf("a", "b", "c")
+        val b = setOf("a", "c")
+        val c = setOf("a", "c", "b", "d")
+        val d = setOf("d")
+        fun f(x: Set<String>, y: Set<String>) = findMissingBetween(x, y)
+        Assert.assertEquals(setOf("b"), f(a,b))
+        Assert.assertEquals(setOf("d"), f(a,c))
+        Assert.assertEquals(setOf("b", "a", "c", "d"), f(a,d))
+        Assert.assertEquals(setOf("a", "c", "d"), f(d,b))
+        Assert.assertEquals(setOf("a", "b", "c"), f(d,c))
+    }
 }

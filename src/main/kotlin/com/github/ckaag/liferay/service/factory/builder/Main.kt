@@ -300,14 +300,15 @@ public class $builder {
 
     val functionDefinitions = StringBuilder()
     val finalBuildMethod = StringBuilder()
-    val copyConstructorMethods: Map<String, StringBuilder> = allRequiredFields.map { Pair(it, StringBuilder()) }.toMap()
+    val copyConstructorMethods: Map<String, StringBuilder> =
+        findMissingBetween(allRequiredFields, missingRequiredFields).map { Pair(it, StringBuilder()) }.toMap()
 
     if (allRequiredFields.isNotEmpty()) {
         //create copy constructors that will be called from other setters
         copyConstructorMethods.forEach { (columnNameThatWasAdded, sb) ->
             sb.appendln(
                 """
-                    public ${builder}(${builderWith(columnNameThatWasAdded)} other) {
+                    ${builder}(${builderWith(columnNameThatWasAdded)} other) {
                 """.trimIndent()
             )
         }
@@ -326,11 +327,12 @@ public class $builder {
             $className entity = service.create${className}(${e.generateIdParamsWithoutType()});
             return this.build(entity);
             }
-            """
+            
+            """.trimIndent()
             )
         } else {
             finalBuildMethod.appendln(
-                """//TODO: add a second builder that generates a new id (this one can just generate a new id via counterlocalservice)
+                """
             public $className build(${className}Persistence persistence) {
                 return this.build(CounterLocalServiceUtil.increment(${className}.class.getName()), persistence);
             }
@@ -413,13 +415,28 @@ public class $builder {
 
     if (allRequiredFields.isNotEmpty()) {
         //finish up with copy constructors
-        copyConstructorMethods.forEach { it.value.appendln("\n}\n") }
+        copyConstructorMethods.forEach { it.value.appendln("}") }
     }
 
 
     //there will only be a build method if all required fields were set at least
     return "$prefix$functionDefinitions\n$finalBuildMethod\n${copyConstructorMethods.map { it.value.toString() }
         .joinToString("\n")}\n\n}\n"
+}
+
+fun findMissingBetween(a: Set<String>, b: Set<String>): Set<String> {
+    val r = mutableSetOf<String>()
+    a.forEach {
+        if (!b.contains(it)) {
+            r.add(it)
+        }
+    }
+    b.forEach {
+        if (!a.contains(it)) {
+            r.add(it)
+        }
+    }
+    return r
 }
 
 private fun formatClassName(baseClassName: String, missingRequiredFieldsInput: List<String>): String {
