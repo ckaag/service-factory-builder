@@ -33,10 +33,12 @@ class ServiceFactoryBuilder : CliktCommand() {
     val inputXmlFiles: List<File> by option("-i", "--input-files").file().multiple(required = true)
     val outputDirectory: Path by option("-o", "--output-directory").path().default(Path.of(ROOT_JAVA_SRC_DIR))
 
-    val dependencies =
-        Dependencies(LogOutput.PrintlnOutputFileWriter(), OutputFileWriter.DiskOutputFileWriter(outputDirectory))
 
     override fun run() {
+
+        val dependencies =
+            Dependencies(LogOutput.PrintlnOutputFileWriter(), OutputFileWriter.DiskOutputFileWriter(outputDirectory))
+
         if (forceMode || outputDirectory.hasMavenOrGradleProjectRoot()) {
             inputXmlFiles.forEach { xmlFile ->
                 val xml: String = xmlFile.readText()
